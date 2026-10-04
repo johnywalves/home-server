@@ -142,3 +142,39 @@ services:
       - /:/data/host      # Acesso completo ao host
     networks:
       - home-network
+
+  # ---------------------------------------------------------------------------
+  # Uptime Kuma (Monitorização de Serviços)
+  # ---------------------------------------------------------------------------
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: uptime-kuma
+    restart: unless-stopped
+    ports:
+      - '3001:3001'
+    volumes:
+      - ${DATA_DIR}/uptime-kuma/data:/app/data
+    networks:
+      - home-network
+
+  # ---------------------------------------------------------------------------
+  # qBittorrent (Cliente Torrent)
+  # ---------------------------------------------------------------------------
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    restart: unless-stopped
+    ports:
+      - '8085:8085'       # Interface Web GUI
+      - '6881:6881/tcp'   # Porta de entrada Torrent (TCP)
+      - '6881:6881/udp'   # Porta de entrada Torrent (UDP)
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+      WEBUI_PORT: 8085
+    volumes:
+      - ${DATA_DIR}/qbittorrent/config:/config
+      - ${MEDIA_DIR}:/downloads
+    networks:
+      - home-network

@@ -84,6 +84,8 @@ mkdir -p services/nginx-proxy-manager/data services/nginx-proxy-manager/letsencr
 mkdir -p services/crafty/data services/crafty/servers
 mkdir -p services/filebrowser/config
 mkdir -p services/syncthing/config
+mkdir -p services/uptime-kuma/data
+mkdir -p services/qbittorrent/config
 
 # Inicializar ficheiros do Filebrowser para evitar que o Docker os crie como diretorias
 if [ ! -f services/filebrowser/filebrowser.db ]; then

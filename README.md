@@ -43,7 +43,9 @@ home-server/
     ├── nginx-proxy-manager/
     ├── crafty/
     ├── filebrowser/
-    └── syncthing/
+    ├── syncthing/
+    ├── uptime-kuma/
+    └── qbittorrent/
 ```
 
 ---
@@ -142,6 +144,8 @@ Como todos os serviços do seu `docker-compose.yml` compartilham a mesma rede (`
 | **Crafty Controller** | `crafty.seudominio.com` | `https` | `crafty` | `8443` |
 | **Filebrowser** | `files.seudominio.com` | `http` | `filebrowser` | `8080` |
 | **Syncthing** | `sync.seudominio.com` | `http` | `syncthing` | `8384` |
+| **Uptime Kuma** | `status.seudominio.com` | `http` | `uptime-kuma` | `3001` |
+| **qBittorrent** | `torrent.seudominio.com` | `http` | `qbittorrent` | `8085` |
 
 > **Atenção sobre o Crafty:** Como a interface web do Crafty utiliza SSL próprio por padrão, defina o *Scheme* como **`https`** para o hostname `crafty`.
 
