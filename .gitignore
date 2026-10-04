@@ -1,0 +1,6 @@
+# Arquivo de ambiente com senhas
+.env
+
+# Ignorar todos os dados de persistência dos serviços
+services/*/**
+!services/**/.gitkeep

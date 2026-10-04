@@ -1,0 +1,144 @@
+version: '3.8'
+
+networks:
+  home-network:
+    driver: bridge
+
+services:
+  # ---------------------------------------------------------------------------
+  # Nginx Proxy Manager (Reverse Proxy + SSL)
+  # ---------------------------------------------------------------------------
+  npm:
+    image: 'jc21/nginx-proxy-manager:latest'
+    container_name: npm
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '81:81'   # Painel Web do NPM
+      - '443:443'
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - ${DATA_DIR}/nginx-proxy-manager/data:/data
+      - ${DATA_DIR}/nginx-proxy-manager/letsencrypt:/etc/letsencrypt
+    networks:
+      - home-network
+
+  # ---------------------------------------------------------------------------
+  # Portainer (Gerenciador de Docker)
+  # ---------------------------------------------------------------------------
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - '9000:9000'
+      - '9443:9443'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DATA_DIR}/portainer/data:/data
+    networks:
+      - home-network
+
+  # ---------------------------------------------------------------------------
+  # VS Code Web (Code-Server)
+  # ---------------------------------------------------------------------------
+  vscode:
+    image: lscr.io/linuxserver/code-server:latest
+    container_name: vscode
+    restart: unless-stopped
+    ports:
+      - '8440:8443'
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+      DEFAULT_WORKSPACE: /config/workspace
+    volumes:
+      - ${DATA_DIR}/vscode/config:/config
+    networks:
+      - home-network
+
+  # ---------------------------------------------------------------------------
+  # Jellyfin (Media Server)
+  # ---------------------------------------------------------------------------
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    restart: unless-stopped
+    ports:
+      - '8096:8096'
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+    volumes:
+      - ${DATA_DIR}/jellyfin/config:/config
+      - ${MEDIA_DIR}:/media
+    networks:
+      - home-network
+
+  # ---------------------------------------------------------------------------
+  # Crafty Controller (Gerenciador de Servidores Minecraft)
+  # ---------------------------------------------------------------------------
+  crafty:
+    image: arcadiaas/crafty-4:latest
+    container_name: crafty
+    restart: unless-stopped
+    ports:
+      - '8443:8443'         # Painel HTTPS do Crafty
+      - '8123:8123'         # Porta de API/HTTP
+      # --- Servidores Java (Range para múltiplos servidores) ---
+      - '25565-25575:25565-25575/tcp'
+      # --- Servidores Bedrock (Range UDP) ---
+      - '19132-19135:19132-19135/udp'
+      # --- Exemplo de porta para mapas interativos (Dynmap/BlueMap) ---
+      - '8124:8124/tcp'
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - ${DATA_DIR}/crafty/data:/crafty/crafty-web/app/config
+      - ${DATA_DIR}/crafty/servers:/crafty/crafty-web/app/game_servers
+    networks:
+      - home-network
+
+  # ---------------------------------------------------------------------------
+  # Filebrowser (Gestor de Arquivos Web)
+  # ---------------------------------------------------------------------------
+  filebrowser:
+    image: filebrowser/filebrowser:latest
+    container_name: filebrowser
+    restart: unless-stopped
+    ports:
+      - '8080:8080'
+    user: "${PUID}:${PGID}"
+    volumes:
+      - /:/srv # Dá acesso a toda a raiz do host
+      - ${DATA_DIR}/filebrowser/filebrowser.db:/database/filebrowser.db
+      - ${DATA_DIR}/filebrowser/config/settings.json:/config/settings.json
+    networks:
+      - home-network
+
+  # ---------------------------------------------------------------------------
+  # Syncthing (Sincronização Contínua de Arquivos)
+  # ---------------------------------------------------------------------------
+  syncthing:
+    image: lscr.io/linuxserver/syncthing:latest
+    container_name: syncthing
+    restart: unless-stopped
+    ports:
+      - '8384:8384'       # Interface Web GUI
+      - '22000:22000/tcp' # Transferência de dados (TCP)
+      - '22000:22000/udp' # Transferência de dados (UDP)
+      - '21027:21027/udp' # Descoberta local de dispositivos (Discovery)
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+    volumes:
+      - ${DATA_DIR}/syncthing/config:/config
+      - /:/data/host      # Acesso completo ao host
+    networks:
+      - home-network
