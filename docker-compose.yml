@@ -142,7 +142,7 @@ services:
   # Uptime Kuma (Monitorização de Serviços)
   # ---------------------------------------------------------------------------
   uptime-kuma:
-    image: louislam/uptime-kuma:1
+    image: louislam/uptime-kuma:2
     container_name: uptime-kuma
     restart: unless-stopped
     ports:
