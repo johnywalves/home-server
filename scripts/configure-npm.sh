@@ -38,7 +38,14 @@ create_or_update_proxy_host() {
     local PORT=$3
     local WEBSOCKET=${4:-false}
     local SCHEME=${5:-http}
-    local FULL_DOMAIN="${SUBDOMAIN}.${DOMAIN_NAME}"
+    
+    # Se SUBDOMAIN for vazio ou "@", usa diretamente DOMAIN_NAME (Naked Domain)
+    local FULL_DOMAIN
+    if [ -z "$SUBDOMAIN" ] || [ "$SUBDOMAIN" == "@" ]; then
+        FULL_DOMAIN="${DOMAIN_NAME}"
+    else
+        FULL_DOMAIN="${SUBDOMAIN}.${DOMAIN_NAME}"
+    fi
 
     echo "🌐 Processando: ${FULL_DOMAIN} -> ${SCHEME}://${CONTAINER_NAME}:${PORT}"
 
@@ -118,12 +125,16 @@ create_or_update_proxy_host() {
             "enabled": true
           }' > /dev/null
     else
-        echo "⚠️ SSL não pôde ser gerado para ${FULL_DOMAIN} (Verifique se as portas 80/443 estão direcionadas e o DuckDNS atualizado). Host mantido em HTTP."
+        echo "⚠️ SSL não pôde ser gerado para ${FULL_DOMAIN}. Host mantido em HTTP."
     fi
 }
 
 echo "🚀 Configurando Proxy Hosts no NPM..."
 
+# 🏠 NAKED DOMAIN (bluedress.duckdns.org) -> Apontando para o Uptime Kuma (ou escolha outro serviço)
+create_or_update_proxy_host "" "uptime-kuma" 3001 true
+
+# 🌐 SUBDOMÍNIOS
 create_or_update_proxy_host "portainer" "portainer" 9000 true
 create_or_update_proxy_host "files" "filebrowser" 8080 false
 create_or_update_proxy_host "code" "vscode" 8443 true
