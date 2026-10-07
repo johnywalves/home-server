@@ -112,7 +112,7 @@ services:
     volumes:
       - /:/srv
       - ${DATA_DIR}/filebrowser/filebrowser.db:/database/filebrowser.db
-      - ${DATA_DIR}/filebrowser/config/settings.json:/config/settings.json
+      - ${DATA_DIR}/filebrowser/config:/config
     networks:
       - home-network
 
