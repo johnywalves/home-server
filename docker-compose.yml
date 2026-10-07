@@ -80,21 +80,18 @@ services:
     networks:
       - home-network
 
-  # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
   # Crafty Controller (Gerenciador de Servidores Minecraft)
   # ---------------------------------------------------------------------------
   crafty:
-    image: arcadiaas/crafty-4:latest
+    image: arcadiaweb/crafty-4:latest
     container_name: crafty
     restart: unless-stopped
     ports:
-      - '8443:8443'         # Painel HTTPS do Crafty
-      - '8123:8123'         # Porta de API/HTTP
-      # --- Servidores Java (Range para múltiplos servidores) ---
+      - '8444:8443'
+      - '8123:8123'
       - '25565-25575:25565-25575/tcp'
-      # --- Servidores Bedrock (Range UDP) ---
       - '19132-19135:19132-19135/udp'
-      # --- Exemplo de porta para mapas interativos (Dynmap/BlueMap) ---
       - '8124:8124/tcp'
     environment:
       TZ: ${TZ}
@@ -115,7 +112,7 @@ services:
       - '8080:8080'
     user: "${PUID}:${PGID}"
     volumes:
-      - /:/srv # Dá acesso a toda a raiz do host
+      - /:/srv
       - ${DATA_DIR}/filebrowser/filebrowser.db:/database/filebrowser.db
       - ${DATA_DIR}/filebrowser/config/settings.json:/config/settings.json
     networks:
@@ -132,7 +129,7 @@ services:
       - '8384:8384'       # Interface Web GUI
       - '22000:22000/tcp' # Transferência de dados (TCP)
       - '22000:22000/udp' # Transferência de dados (UDP)
-      - '21027:21027/udp' # Descoberta local de dispositivos (Discovery)
+      - '21027:21027/udp' # Descoberta local (Discovery)
     environment:
       PUID: ${PUID}
       PGID: ${PGID}
@@ -166,8 +163,8 @@ services:
     restart: unless-stopped
     ports:
       - '8085:8085'       # Interface Web GUI
-      - '6881:6881/tcp'   # Porta de entrada Torrent (TCP)
-      - '6881:6881/udp'   # Porta de entrada Torrent (UDP)
+      - '6881:6881/tcp'   # Entrada Torrent (TCP)
+      - '6881:6881/udp'   # Entrada Torrent (UDP)
     environment:
       PUID: ${PUID}
       PGID: ${PGID}
