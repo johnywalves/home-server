@@ -1,177 +1,147 @@
-networks:
-  home-network:
-    driver: bridge
+#!/usr/bin/env bash
+set -e
 
-services:
-  # ---------------------------------------------------------------------------
-  # Nginx Proxy Manager (Reverse Proxy + SSL)
-  # ---------------------------------------------------------------------------
-  npm:
-    image: 'jc21/nginx-proxy-manager:latest'
-    container_name: npm
-    restart: unless-stopped
-    ports:
-      - '80:80'
-      - '81:81'   # Painel Web do NPM
-      - '443:443'
-    environment:
-      TZ: ${TZ}
-    volumes:
-      - ${DATA_DIR}/nginx-proxy-manager/data:/data
-      - ${DATA_DIR}/nginx-proxy-manager/letsencrypt:/etc/letsencrypt
-    networks:
-      - home-network
+# Carregar variáveis do .env
+if [ -f .env ]; then
+    export $(grep -v '^#' .env | xargs)
+fi
 
-  # ---------------------------------------------------------------------------
-  # Portainer (Gerenciador de Docker)
-  # ---------------------------------------------------------------------------
-  portainer:
-    image: portainer/portainer-ce:latest
-    container_name: portainer
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    ports:
-      - '9000:9000'
-      - '9443:9443'
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ${DATA_DIR}/portainer/data:/data
-    networks:
-      - home-network
+if [ -z "$DOMAIN_NAME" ] || [ -z "$ADMIN_EMAIL" ]; then
+    echo "❌ DOMAIN_NAME ou ADMIN_EMAIL não definidos no .env"
+    exit 1
+fi
 
-  # ---------------------------------------------------------------------------
-  # VS Code Web (Code-Server)
-  # ---------------------------------------------------------------------------
-  vscode:
-    image: lscr.io/linuxserver/code-server:latest
-    container_name: vscode
-    restart: unless-stopped
-    ports:
-      - '8441:8443'   # Exposto em 8441 no host para liberar a 8443 para o Crafty
-    environment:
-      PUID: ${PUID}
-      PGID: ${PGID}
-      TZ: ${TZ}
-      DEFAULT_WORKSPACE: /config/workspace
-    volumes:
-      - ${DATA_DIR}/vscode/config:/config
-      - ${DATA_DIR}/src:/src
-    networks:
-      - home-network
+NPM_API="http://localhost:81/api"
+NPM_ADMIN_USER="${NPM_ADMIN_EMAIL:-admin@example.com}"
+NPM_ADMIN_PASS="${NPM_ADMIN_PASSWORD:-changeme}"
 
-  # ---------------------------------------------------------------------------
-  # Jellyfin (Media Server)
-  # ---------------------------------------------------------------------------
-  jellyfin:
-    image: lscr.io/linuxserver/jellyfin:latest
-    container_name: jellyfin
-    restart: unless-stopped
-    ports:
-      - '8096:8096'
-    environment:
-      PUID: ${PUID}
-      PGID: ${PGID}
-      TZ: ${TZ}
-    volumes:
-      - ${DATA_DIR}/jellyfin/config:/config
-      - ${MEDIA_DIR}:/media
-    networks:
-      - home-network
+echo "⏳ Aguardando Nginx Proxy Manager ficar online..."
+until curl -s "$NPM_API/" > /dev/null; do
+    sleep 3
+done
 
-  # ---------------------------------------------------------------------------
-  # Crafty Controller (Gerenciador de Servidores Minecraft)
-  # ---------------------------------------------------------------------------
-  crafty:
-    image: registry.gitlab.com/crafty-controller/crafty-4:latest
-    container_name: crafty
-    restart: unless-stopped
-    ports:
-      - '8443:8443'         # Mantido 8443 no host
-      - '8123:8123'         # Porta de API/HTTP
-      - '25565-25575:25565-25575/tcp' # Range Java
-      - '19132-19135:19132-19135/udp' # Range Bedrock
-      - '8124:8124/tcp'     # Dynmap / BlueMap
-    environment:
-      TZ: ${TZ}
-    volumes:
-      - ${DATA_DIR}/crafty/data:/crafty/crafty-web/app/config
-      - ${DATA_DIR}/crafty/servers:/crafty/crafty-web/app/game_servers
-    networks:
-      - home-network
+echo "🔐 Efetuando login na API do NPM..."
+LOGIN_RESPONSE=$(curl -s -X POST "$NPM_API/tokens" \
+  -H "Content-Type: application/json" \
+  -d '{"identity":"'"$NPM_ADMIN_USER"'","secret":"'"$NPM_ADMIN_PASS"'"}')
 
-  # ---------------------------------------------------------------------------
-  # Filebrowser (Gestor de Arquivos Web)
-  # ---------------------------------------------------------------------------
-  filebrowser:
-    image: filebrowser/filebrowser:v2
-    container_name: filebrowser
-    restart: unless-stopped
-    ports:
-      - '8080:8080'
-    user: "${PUID}:${PGID}"
-    command: --database /database/filebrowser.db
-    volumes:
-      - /:/srv
-      - ${DATA_DIR}/filebrowser/database:/database
-      - ${DATA_DIR}/filebrowser/config:/config
-    networks:
-      - home-network
+TOKEN=$(echo "$LOGIN_RESPONSE" | jq -r '.token // empty')
 
-  # ---------------------------------------------------------------------------
-  # Syncthing (Sincronização Contínua de Arquivos)
-  # ---------------------------------------------------------------------------
-  syncthing:
-    image: lscr.io/linuxserver/syncthing:latest
-    container_name: syncthing
-    restart: unless-stopped
-    ports:
-      - '8384:8384'       # Interface Web GUI
-      - '22000:22000/tcp' # Transferência TCP
-      - '22000:22000/udp' # Transferência UDP
-      - '21027:21027/udp' # Local Discovery
-    environment:
-      PUID: ${PUID}
-      PGID: ${PGID}
-      TZ: ${TZ}
-    volumes:
-      - ${DATA_DIR}/syncthing/config:/config
-      - /:/data/host
-    networks:
-      - home-network
+if [ -z "$TOKEN" ]; then
+    echo "❌ Falha ao obter token. Verifique as credenciais no .env ou logue no painel web (http://localhost:81) para trocar a senha padrão."
+    exit 1
+fi
 
-  # ---------------------------------------------------------------------------
-  # Uptime Kuma (Monitorização de Serviços)
-  # ---------------------------------------------------------------------------
-  uptime-kuma:
-    image: louislam/uptime-kuma:2
-    container_name: uptime-kuma
-    restart: unless-stopped
-    ports:
-      - '3001:3001'
-    volumes:
-      - ${DATA_DIR}/uptime-kuma/data:/app/data
-    networks:
-      - home-network
+create_or_update_proxy_host() {
+    local SUBDOMAIN=$1
+    local CONTAINER_NAME=$2
+    local PORT=$3
+    local WEBSOCKET=${4:-false}
+    local SCHEME=${5:-http}
+    
+    # Se SUBDOMAIN for vazio ou "@", usa diretamente DOMAIN_NAME (Naked Domain)
+    local FULL_DOMAIN
+    if [ -z "$SUBDOMAIN" ] || [ "$SUBDOMAIN" == "@" ]; then
+        FULL_DOMAIN="${DOMAIN_NAME}"
+    else
+        FULL_DOMAIN="${SUBDOMAIN}.${DOMAIN_NAME}"
+    fi
 
-  # ---------------------------------------------------------------------------
-  # qBittorrent (Cliente Torrent)
-  # ---------------------------------------------------------------------------
-  qbittorrent:
-    image: lscr.io/linuxserver/qbittorrent:latest
-    container_name: qbittorrent
-    restart: unless-stopped
-    ports:
-      - '8085:8085'       # Interface Web GUI
-      - '6881:6881/tcp'   # Entrada Torrent TCP
-      - '6881:6881/udp'   # Entrada Torrent UDP
-    environment:
-      PUID: ${PUID}
-      PGID: ${PGID}
-      TZ: ${TZ}
-      WEBUI_PORT: 8085
-    volumes:
-      - ${DATA_DIR}/qbittorrent/config:/config
-      - ${MEDIA_DIR}:/downloads
-    networks:
-      - home-network
+    echo "🌐 Processando: ${FULL_DOMAIN} -> ${SCHEME}://${CONTAINER_NAME}:${PORT}"
+
+    # 1. Verifica se o Proxy Host já existe no NPM
+    local HOST_ID=$(curl -s -X GET "$NPM_API/nginx/proxy-hosts" \
+      -H "Authorization: Bearer $TOKEN" \
+      | jq -r '.[] | select(.domain_names[] == "'"$FULL_DOMAIN"'") | .id' | head -n1)
+
+    # 2. Cria o Proxy Host sem SSL primeiro para poder passar na validação ACME/Let's Encrypt
+    if [ -z "$HOST_ID" ] || [ "$HOST_ID" == "null" ]; then
+        echo "➕ Criando Proxy Host HTTP para ${FULL_DOMAIN}..."
+        HOST_RESPONSE=$(curl -s -X POST "$NPM_API/nginx/proxy-hosts" \
+          -H "Authorization: Bearer $TOKEN" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "domain_names": ["'"${FULL_DOMAIN}"'"],
+            "forward_scheme": "'"${SCHEME}"'",
+            "forward_host": "'"${CONTAINER_NAME}"'",
+            "forward_port": '"${PORT}"',
+            "access_list_id": "0",
+            "certificate_id": 0,
+            "meta": {},
+            "advanced_config": "",
+            "locations": [],
+            "block_exploits": true,
+            "caching_enabled": false,
+            "allow_websocket_upgrade": '"${WEBSOCKET}"',
+            "ssl_forced": false,
+            "http2_support": true,
+            "enabled": true
+          }')
+        HOST_ID=$(echo "$HOST_RESPONSE" | jq -r '.id // empty')
+    fi
+
+    if [ -z "$HOST_ID" ] || [ "$HOST_ID" == "null" ]; then
+        echo "❌ Erro ao criar o Proxy Host para ${FULL_DOMAIN}."
+        return 1
+    fi
+
+    # 3. Solicita o Certificado SSL Let's Encrypt
+    echo "🔒 Solicitando Certificado SSL Let's Encrypt para ${FULL_DOMAIN}..."
+    CERT_RESPONSE=$(curl -s -X POST "$NPM_API/nginx/certificates" \
+      -H "Authorization: Bearer $TOKEN" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "provider": "letsencrypt",
+        "domain_names": ["'"${FULL_DOMAIN}"'"],
+        "meta": {
+          "letsencrypt_email": "'"${ADMIN_EMAIL}"'",
+          "letsencrypt_agree": true
+        }
+      }')
+
+    CERT_ID=$(echo "$CERT_RESPONSE" | jq -r '.id // empty')
+
+    # 4. Se o certificado foi emitido, vincula ao Proxy Host e ativa Force SSL
+    if [ -n "$CERT_ID" ] && [ "$CERT_ID" != "null" ] && [ "$CERT_ID" -gt 0 ]; then
+        echo "✅ Certificado gerado (ID: ${CERT_ID}). Ativando HTTPS forçado..."
+        curl -s -X PUT "$NPM_API/nginx/proxy-hosts/${HOST_ID}" \
+          -H "Authorization: Bearer $TOKEN" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "domain_names": ["'"${FULL_DOMAIN}"'"],
+            "forward_scheme": "'"${SCHEME}"'",
+            "forward_host": "'"${CONTAINER_NAME}"'",
+            "forward_port": '"${PORT}"',
+            "access_list_id": "0",
+            "certificate_id": '"${CERT_ID}"',
+            "meta": {},
+            "advanced_config": "",
+            "locations": [],
+            "block_exploits": true,
+            "caching_enabled": false,
+            "allow_websocket_upgrade": '"${WEBSOCKET}"',
+            "ssl_forced": true,
+            "http2_support": true,
+            "enabled": true
+          }' > /dev/null
+    else
+        echo "⚠️ SSL não pôde ser gerado para ${FULL_DOMAIN}. Host mantido em HTTP."
+    fi
+}
+
+echo "🚀 Configurando Proxy Hosts no NPM..."
+
+# 🏠 NAKED DOMAIN (bluedress.duckdns.org) -> Apontando para o Uptime Kuma (ou escolha outro serviço)
+create_or_update_proxy_host "" "uptime-kuma" 3001 true
+
+# 🌐 SUBDOMÍNIOS
+create_or_update_proxy_host "portainer" "portainer" 9000 true
+create_or_update_proxy_host "files" "filebrowser" 8080 false
+create_or_update_proxy_host "code" "vscode" 8443 true
+create_or_update_proxy_host "jellyfin" "jellyfin" 8096 false
+create_or_update_proxy_host "crafty" "crafty" 8443 true "https"
+create_or_update_proxy_host "syncthing" "syncthing" 8384 false
+create_or_update_proxy_host "status" "uptime-kuma" 3001 true
+create_or_update_proxy_host "torrent" "qbittorrent" 8085 false
+
+echo "✅ Configuração concluída com sucesso!"
