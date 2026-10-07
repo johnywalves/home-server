@@ -3,7 +3,7 @@ set -e
 
 # Carregar variáveis do .env
 if [ -f .env ]; then
-    export $(cat .env | grep -v '^#' | xargs)
+    export $(grep -v '^#' .env | xargs)
 fi
 
 if [ -z "$DOMAIN_NAME" ] || [ -z "$ADMIN_EMAIL" ]; then
@@ -12,37 +12,40 @@ if [ -z "$DOMAIN_NAME" ] || [ -z "$ADMIN_EMAIL" ]; then
 fi
 
 NPM_API="http://localhost:81/api"
+NPM_ADMIN_USER="${NPM_ADMIN_EMAIL:-admin@example.com}"
+NPM_ADMIN_PASS="${NPM_ADMIN_PASSWORD:-changeme}"
 
-echo "⏳ A aguardar que o Nginx Proxy Manager esteja pronto..."
+echo "⏳ Aguardando Nginx Proxy Manager ficar online..."
 until curl -s "$NPM_API/" > /dev/null; do
     sleep 3
 done
 
-echo "🔐 A obter token de acesso da API do NPM..."
-TOKEN=$(curl -s -X POST "$NPM_API/tokens" \
+echo "🔐 Efetuando login na API do NPM..."
+LOGIN_RESPONSE=$(curl -s -X POST "$NPM_API/tokens" \
   -H "Content-Type: application/json" \
-  -d '{"identity":"admin@example.com","secret":"changeme"}' | grep -o '"token":"[^"]*' | grep -o '[^"]*$')
+  -d '{"identity":"'"$NPM_ADMIN_USER"'","secret":"'"$NPM_ADMIN_PASS"'"}')
+
+TOKEN=$(echo "$LOGIN_RESPONSE" | jq -r '.token // empty')
 
 if [ -z "$TOKEN" ]; then
-    echo "⚠️ Não foi possível obter o token. O NPM já pode ter sido configurado ou a palavra-passe alterada."
-    exit 0
+    echo "❌ Falha ao obter token. Verifique as credenciais no .env ou logue manualmente no painel (http://localhost:81) para definir a nova senha do NPM."
+    exit 1
 fi
 
-# Função para solicitar certificado Let's Encrypt ou obter o existente
 get_or_create_certificate() {
     local DOMAIN=$1
-    
-    # Verifica se já existe certificado para este domínio no NPM
+
+    # Verifica se o certificado já existe
     local CERT_ID=$(curl -s -X GET "$NPM_API/nginx/certificates" \
       -H "Authorization: Bearer $TOKEN" \
-      | grep -o '{"id":[0-9]*,"domain_names":\["'${DOMAIN}'"' | grep -o '[0-9]*' | head -n1)
+      | jq -r '.[] | select(.domain_names[] == "'"$DOMAIN"'") | .id' | head -n1)
 
-    if [ -n "$CERT_ID" ]; then
-        echo $CERT_ID
+    if [ -n "$CERT_ID" ] && [ "$CERT_ID" != "null" ]; then
+        echo "$CERT_ID"
         return
     fi
 
-    # Solicita um novo certificado Let's Encrypt
+    # Tenta solicitar o certificado no Let's Encrypt
     local CERT_RESPONSE=$(curl -s -X POST "$NPM_API/nginx/certificates" \
       -H "Authorization: Bearer $TOKEN" \
       -H "Content-Type: application/json" \
@@ -55,11 +58,10 @@ get_or_create_certificate() {
         }
       }')
 
-    CERT_ID=$(echo "$CERT_RESPONSE" | grep -o '"id":[0-9]*' | head -n1 | cut -d':' -f2)
-    echo $CERT_ID
+    CERT_ID=$(echo "$CERT_RESPONSE" | jq -r '.id // empty')
+    echo "$CERT_ID"
 }
 
-# Função para criar Proxy Host com HTTPS forçado
 create_proxy_host_https() {
     local SUBDOMAIN=$1
     local CONTAINER_NAME=$2
@@ -68,22 +70,21 @@ create_proxy_host_https() {
     local SCHEME=${5:-http}
     local FULL_DOMAIN="${SUBDOMAIN}.${DOMAIN_NAME}"
 
-    echo "🌐 Processando: https://${FULL_DOMAIN} -> ${SCHEME}://${CONTAINER_NAME}:${PORT}"
+    echo "🌐 Registrando: ${FULL_DOMAIN} -> ${SCHEME}://${CONTAINER_NAME}:${PORT}"
 
-    # 1. Tentar solicitar/obter o certificado SSL
-    echo "🔒 Solicitando/verificando certificado SSL para ${FULL_DOMAIN}..."
+    # Tenta obter certificado SSL
     local CERT_ID=$(get_or_create_certificate "${FULL_DOMAIN}")
-
     local FORCE_SSL=false
-    if [ -n "$CERT_ID" ] && [ "$CERT_ID" -gt 0 ]; then
-        echo "✅ Certificado SSL obtido com sucesso (ID: ${CERT_ID}). Forçando HTTPS..."
+
+    if [ -n "$CERT_ID" ] && [ "$CERT_ID" != "null" ] && [ "$CERT_ID" -gt 0 ]; then
+        echo "✅ SSL ativo para ${FULL_DOMAIN} (Cert ID: ${CERT_ID})"
         FORCE_SSL=true
     else
-        echo "⚠️ Não foi possível obter SSL automático para ${FULL_DOMAIN} (verifique se o DNS já propagou e se as portas 80/443 estão abertas). Criando sem Force SSL por enquanto."
+        echo "⚠️ SSL não obtido para ${FULL_DOMAIN}. Registrando como HTTP simples."
         CERT_ID=0
     fi
 
-    # 2. Criar ou atualizar o Proxy Host
+    # Criar Proxy Host no NPM
     curl -s -X POST "$NPM_API/nginx/proxy-hosts" \
       -H "Authorization: Bearer $TOKEN" \
       -H "Content-Type: application/json" \
@@ -106,7 +107,7 @@ create_proxy_host_https() {
       }' > /dev/null
 }
 
-echo "🚀 A configurar os Proxy Hosts com HTTPS no Nginx Proxy Manager..."
+echo "🚀 Configurando Proxy Hosts no NPM..."
 
 create_proxy_host_https "portainer" "portainer" 9000 true
 create_proxy_host_https "files" "filebrowser" 8080 false
@@ -117,4 +118,4 @@ create_proxy_host_https "syncthing" "syncthing" 8384 false
 create_proxy_host_https "status" "uptime-kuma" 3001 true
 create_proxy_host_https "torrent" "qbittorrent" 8085 false
 
-echo "✅ Todos os subdomínios foram configurados no Nginx Proxy Manager!"
+echo "✅ Todos os hosts foram processados com sucesso!"
