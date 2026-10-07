@@ -1,5 +1,3 @@
-version: '3.8'
-
 networks:
   home-network:
     driver: bridge
@@ -50,7 +48,7 @@ services:
     container_name: vscode
     restart: unless-stopped
     ports:
-      - '8440:8443'
+      - '8441:8443'   # Exposto em 8441 no host para liberar a 8443 para o Crafty
     environment:
       PUID: ${PUID}
       PGID: ${PGID}
@@ -80,19 +78,19 @@ services:
     networks:
       - home-network
 
-# ---------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
   # Crafty Controller (Gerenciador de Servidores Minecraft)
   # ---------------------------------------------------------------------------
   crafty:
-    image: arcadiaweb/crafty-4:latest
+    image: registry.gitlab.com/crafty-controller/crafty-4:latest
     container_name: crafty
     restart: unless-stopped
     ports:
-      - '8444:8443'
-      - '8123:8123'
-      - '25565-25575:25565-25575/tcp'
-      - '19132-19135:19132-19135/udp'
-      - '8124:8124/tcp'
+      - '8443:8443'         # Mantido 8443 no host
+      - '8123:8123'         # Porta de API/HTTP
+      - '25565-25575:25565-25575/tcp' # Range Java
+      - '19132-19135:19132-19135/udp' # Range Bedrock
+      - '8124:8124/tcp'     # Dynmap / BlueMap
     environment:
       TZ: ${TZ}
     volumes:
@@ -127,16 +125,16 @@ services:
     restart: unless-stopped
     ports:
       - '8384:8384'       # Interface Web GUI
-      - '22000:22000/tcp' # Transferência de dados (TCP)
-      - '22000:22000/udp' # Transferência de dados (UDP)
-      - '21027:21027/udp' # Descoberta local (Discovery)
+      - '22000:22000/tcp' # Transferência TCP
+      - '22000:22000/udp' # Transferência UDP
+      - '21027:21027/udp' # Local Discovery
     environment:
       PUID: ${PUID}
       PGID: ${PGID}
       TZ: ${TZ}
     volumes:
       - ${DATA_DIR}/syncthing/config:/config
-      - /:/data/host      # Acesso completo ao host
+      - /:/data/host
     networks:
       - home-network
 
@@ -163,8 +161,8 @@ services:
     restart: unless-stopped
     ports:
       - '8085:8085'       # Interface Web GUI
-      - '6881:6881/tcp'   # Entrada Torrent (TCP)
-      - '6881:6881/udp'   # Entrada Torrent (UDP)
+      - '6881:6881/tcp'   # Entrada Torrent TCP
+      - '6881:6881/udp'   # Entrada Torrent UDP
     environment:
       PUID: ${PUID}
       PGID: ${PGID}
