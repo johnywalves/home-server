@@ -104,7 +104,7 @@ services:
   # Filebrowser (Gestor de Arquivos Web)
   # ---------------------------------------------------------------------------
   filebrowser:
-    image: filebrowser/filebrowser:latest
+    image: filebrowser/filebrowser:v2-debian
     container_name: filebrowser
     restart: unless-stopped
     ports:
