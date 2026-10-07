@@ -28,41 +28,11 @@ LOGIN_RESPONSE=$(curl -s -X POST "$NPM_API/tokens" \
 TOKEN=$(echo "$LOGIN_RESPONSE" | jq -r '.token // empty')
 
 if [ -z "$TOKEN" ]; then
-    echo "❌ Falha ao obter token. Verifique as credenciais no .env ou logue manualmente no painel (http://localhost:81) para definir a nova senha do NPM."
+    echo "❌ Falha ao obter token. Verifique as credenciais no .env ou logue no painel web (http://localhost:81) para trocar a senha padrão."
     exit 1
 fi
 
-get_or_create_certificate() {
-    local DOMAIN=$1
-
-    # Verifica se o certificado já existe
-    local CERT_ID=$(curl -s -X GET "$NPM_API/nginx/certificates" \
-      -H "Authorization: Bearer $TOKEN" \
-      | jq -r '.[] | select(.domain_names[] == "'"$DOMAIN"'") | .id' | head -n1)
-
-    if [ -n "$CERT_ID" ] && [ "$CERT_ID" != "null" ]; then
-        echo "$CERT_ID"
-        return
-    fi
-
-    # Tenta solicitar o certificado no Let's Encrypt
-    local CERT_RESPONSE=$(curl -s -X POST "$NPM_API/nginx/certificates" \
-      -H "Authorization: Bearer $TOKEN" \
-      -H "Content-Type: application/json" \
-      -d '{
-        "provider": "letsencrypt",
-        "domain_names": ["'"${DOMAIN}"'"],
-        "meta": {
-          "letsencrypt_email": "'"${ADMIN_EMAIL}"'",
-          "letsencrypt_agree": true
-        }
-      }')
-
-    CERT_ID=$(echo "$CERT_RESPONSE" | jq -r '.id // empty')
-    echo "$CERT_ID"
-}
-
-create_proxy_host_https() {
+create_or_update_proxy_host() {
     local SUBDOMAIN=$1
     local CONTAINER_NAME=$2
     local PORT=$3
@@ -70,52 +40,97 @@ create_proxy_host_https() {
     local SCHEME=${5:-http}
     local FULL_DOMAIN="${SUBDOMAIN}.${DOMAIN_NAME}"
 
-    echo "🌐 Registrando: ${FULL_DOMAIN} -> ${SCHEME}://${CONTAINER_NAME}:${PORT}"
+    echo "🌐 Processando: ${FULL_DOMAIN} -> ${SCHEME}://${CONTAINER_NAME}:${PORT}"
 
-    # Tenta obter certificado SSL
-    local CERT_ID=$(get_or_create_certificate "${FULL_DOMAIN}")
-    local FORCE_SSL=false
+    # 1. Verifica se o Proxy Host já existe no NPM
+    local HOST_ID=$(curl -s -X GET "$NPM_API/nginx/proxy-hosts" \
+      -H "Authorization: Bearer $TOKEN" \
+      | jq -r '.[] | select(.domain_names[] == "'"$FULL_DOMAIN"'") | .id' | head -n1)
 
-    if [ -n "$CERT_ID" ] && [ "$CERT_ID" != "null" ] && [ "$CERT_ID" -gt 0 ]; then
-        echo "✅ SSL ativo para ${FULL_DOMAIN} (Cert ID: ${CERT_ID})"
-        FORCE_SSL=true
-    else
-        echo "⚠️ SSL não obtido para ${FULL_DOMAIN}. Registrando como HTTP simples."
-        CERT_ID=0
+    # 2. Cria o Proxy Host sem SSL primeiro para poder passar na validação ACME/Let's Encrypt
+    if [ -z "$HOST_ID" ] || [ "$HOST_ID" == "null" ]; then
+        echo "➕ Criando Proxy Host HTTP para ${FULL_DOMAIN}..."
+        HOST_RESPONSE=$(curl -s -X POST "$NPM_API/nginx/proxy-hosts" \
+          -H "Authorization: Bearer $TOKEN" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "domain_names": ["'"${FULL_DOMAIN}"'"],
+            "forward_scheme": "'"${SCHEME}"'",
+            "forward_host": "'"${CONTAINER_NAME}"'",
+            "forward_port": '"${PORT}"',
+            "access_list_id": "0",
+            "certificate_id": 0,
+            "meta": {},
+            "advanced_config": "",
+            "locations": [],
+            "block_exploits": true,
+            "caching_enabled": false,
+            "allow_websocket_upgrade": '"${WEBSOCKET}"',
+            "ssl_forced": false,
+            "http2_support": true,
+            "enabled": true
+          }')
+        HOST_ID=$(echo "$HOST_RESPONSE" | jq -r '.id // empty')
     fi
 
-    # Criar Proxy Host no NPM
-    curl -s -X POST "$NPM_API/nginx/proxy-hosts" \
+    if [ -z "$HOST_ID" ] || [ "$HOST_ID" == "null" ]; then
+        echo "❌ Erro ao criar o Proxy Host para ${FULL_DOMAIN}."
+        return 1
+    fi
+
+    # 3. Solicita o Certificado SSL Let's Encrypt
+    echo "🔒 Solicitando Certificado SSL Let's Encrypt para ${FULL_DOMAIN}..."
+    CERT_RESPONSE=$(curl -s -X POST "$NPM_API/nginx/certificates" \
       -H "Authorization: Bearer $TOKEN" \
       -H "Content-Type: application/json" \
       -d '{
+        "provider": "letsencrypt",
         "domain_names": ["'"${FULL_DOMAIN}"'"],
-        "forward_scheme": "'"${SCHEME}"'",
-        "forward_host": "'"${CONTAINER_NAME}"'",
-        "forward_port": '"${PORT}"',
-        "access_list_id": "0",
-        "certificate_id": '${CERT_ID:-0}',
-        "meta": {"letsencrypt_agree": true, "letsencrypt_email": "'"${ADMIN_EMAIL}"'"},
-        "advanced_config": "",
-        "locations": [],
-        "block_exploits": true,
-        "caching_enabled": false,
-        "allow_websocket_upgrade": '"${WEBSOCKET}"',
-        "ssl_forced": '"${FORCE_SSL}"',
-        "http2_support": true,
-        "enabled": true
-      }' > /dev/null
+        "meta": {
+          "letsencrypt_email": "'"${ADMIN_EMAIL}"'",
+          "letsencrypt_agree": true
+        }
+      }')
+
+    CERT_ID=$(echo "$CERT_RESPONSE" | jq -r '.id // empty')
+
+    # 4. Se o certificado foi emitido, vincula ao Proxy Host e ativa Force SSL
+    if [ -n "$CERT_ID" ] && [ "$CERT_ID" != "null" ] && [ "$CERT_ID" -gt 0 ]; then
+        echo "✅ Certificado gerado (ID: ${CERT_ID}). Ativando HTTPS forçado..."
+        curl -s -X PUT "$NPM_API/nginx/proxy-hosts/${HOST_ID}" \
+          -H "Authorization: Bearer $TOKEN" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "domain_names": ["'"${FULL_DOMAIN}"'"],
+            "forward_scheme": "'"${SCHEME}"'",
+            "forward_host": "'"${CONTAINER_NAME}"'",
+            "forward_port": '"${PORT}"',
+            "access_list_id": "0",
+            "certificate_id": '"${CERT_ID}"',
+            "meta": {},
+            "advanced_config": "",
+            "locations": [],
+            "block_exploits": true,
+            "caching_enabled": false,
+            "allow_websocket_upgrade": '"${WEBSOCKET}"',
+            "ssl_forced": true,
+            "http2_support": true,
+            "enabled": true
+          }' > /dev/null
+    else
+        echo "⚠️ SSL não pôde ser gerado para ${FULL_DOMAIN} (Verifique se as portas 80/443 estão direcionadas e o DuckDNS atualizado). Host mantido em HTTP."
+    fi
 }
 
 echo "🚀 Configurando Proxy Hosts no NPM..."
 
-create_proxy_host_https "portainer" "portainer" 9000 true
-create_proxy_host_https "files" "filebrowser" 8080 false
-create_proxy_host_https "code" "vscode" 8443 true
-create_proxy_host_https "jellyfin" "jellyfin" 8096 false
-create_proxy_host_https "crafty" "crafty" 8443 true "https"
-create_proxy_host_https "syncthing" "syncthing" 8384 false
-create_proxy_host_https "status" "uptime-kuma" 3001 true
-create_proxy_host_https "torrent" "qbittorrent" 8085 false
+create_or_update_proxy_host "portainer" "portainer" 9000 true
+create_or_update_proxy_host "files" "filebrowser" 8080 false
+create_or_update_proxy_host "code" "vscode" 8443 true
+create_or_update_proxy_host "jellyfin" "jellyfin" 8096 false
+create_or_update_proxy_host "crafty" "crafty" 8443 true "https"
+create_or_update_proxy_host "syncthing" "syncthing" 8384 false
+create_or_update_proxy_host "status" "uptime-kuma" 3001 true
+create_or_update_proxy_host "torrent" "qbittorrent" 8085 false
 
-echo "✅ Todos os hosts foram processados com sucesso!"
+echo "✅ Configuração concluída com sucesso!"
