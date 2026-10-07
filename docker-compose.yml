@@ -104,12 +104,13 @@ services:
   # Filebrowser (Gestor de Arquivos Web)
   # ---------------------------------------------------------------------------
   filebrowser:
-    image: filebrowser/filebrowser:v2-debian
+    image: filebrowser/filebrowser:v2
     container_name: filebrowser
     restart: unless-stopped
     ports:
       - '8080:8080'
     user: "${PUID}:${PGID}"
+    command: --database /database/filebrowser.db
     volumes:
       - /:/srv
       - ${DATA_DIR}/filebrowser/database:/database
