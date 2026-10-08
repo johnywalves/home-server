@@ -48,7 +48,7 @@ services:
     container_name: vscode
     restart: unless-stopped
     ports:
-      - '8440:8443'
+      - '8441:8443'   # Exposto em 8441 no host para liberar a 8443 para o Crafty
     environment:
       PUID: ${PUID}
       PGID: ${PGID}
@@ -56,6 +56,7 @@ services:
       DEFAULT_WORKSPACE: /config/workspace
     volumes:
       - ${DATA_DIR}/vscode/config:/config
+      - ${DATA_DIR}/src:/src
     networks:
       - home-network
 
@@ -82,18 +83,15 @@ services:
   # Crafty Controller (Gerenciador de Servidores Minecraft)
   # ---------------------------------------------------------------------------
   crafty:
-    image: arcadiaas/crafty-4:latest
+    image: registry.gitlab.com/crafty-controller/crafty-4:latest
     container_name: crafty
     restart: unless-stopped
     ports:
-      - '8443:8443'         # Painel HTTPS do Crafty
+      - '8443:8443'         # Mantido 8443 no host
       - '8123:8123'         # Porta de API/HTTP
-      # --- Servidores Java (Range para múltiplos servidores) ---
-      - '25565-25575:25565-25575/tcp'
-      # --- Servidores Bedrock (Range UDP) ---
-      - '19132-19135:19132-19135/udp'
-      # --- Exemplo de porta para mapas interativos (Dynmap/BlueMap) ---
-      - '8124:8124/tcp'
+      - '25565-25575:25565-25575/tcp' # Range Java
+      - '19132-19135:19132-19135/udp' # Range Bedrock
+      - '8124:8124/tcp'     # Dynmap / BlueMap
     environment:
       TZ: ${TZ}
     volumes:
@@ -106,16 +104,17 @@ services:
   # Filebrowser (Gestor de Arquivos Web)
   # ---------------------------------------------------------------------------
   filebrowser:
-    image: filebrowser/filebrowser:v2-debian
+    image: filebrowser/filebrowser:v2
     container_name: filebrowser
     restart: unless-stopped
     ports:
       - '8080:8080'
     user: "${PUID}:${PGID}"
+    command: --database /database/filebrowser.db --port 8080
     volumes:
-      - /:/srv # Dá acesso a toda a raiz do host
-      - ${DATA_DIR}/filebrowser/filebrowser.db:/database/filebrowser.db
-      - ${DATA_DIR}/filebrowser/config/settings.json:/config/settings.json
+      - ${DATA_DIR}/:/srv
+      - ${DATA_DIR}/filebrowser/database:/database
+      - ${DATA_DIR}/filebrowser/config:/config
     networks:
       - home-network
 
@@ -128,15 +127,72 @@ services:
     restart: unless-stopped
     ports:
       - '8384:8384'       # Interface Web GUI
-      - '22000:22000/tcp' # Transferência de dados (TCP)
-      - '22000:22000/udp' # Transferência de dados (UDP)
-      - '21027:21027/udp' # Descoberta local de dispositivos (Discovery)
+      - '22000:22000/tcp' # Transferência TCP
+      - '22000:22000/udp' # Transferência UDP
+      - '21027:21027/udp' # Local Discovery
     environment:
       PUID: ${PUID}
       PGID: ${PGID}
       TZ: ${TZ}
     volumes:
       - ${DATA_DIR}/syncthing/config:/config
-      - /:/data/host      # Acesso completo ao host
+      - /:/data/host
+    networks:
+      - home-network
+
+  # ---------------------------------------------------------------------------
+  # Uptime Kuma (Monitorização de Serviços)
+  # ---------------------------------------------------------------------------
+  uptime-kuma:
+    image: louislam/uptime-kuma:2
+    container_name: uptime-kuma
+    restart: unless-stopped
+    ports:
+      - '3001:3001'
+    volumes:
+      - ${DATA_DIR}/uptime-kuma/data:/app/data
+    networks:
+      - home-network
+
+  # ---------------------------------------------------------------------------
+  # qBittorrent (Cliente Torrent)
+  # ---------------------------------------------------------------------------
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    restart: unless-stopped
+    ports:
+      - '8085:8085'       # Interface Web GUI
+      - '6881:6881/tcp'   # Entrada Torrent TCP
+      - '6881:6881/udp'   # Entrada Torrent UDP
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+      WEBUI_PORT: 8085
+    volumes:
+      - ${DATA_DIR}/qbittorrent/config:/config
+      - ${MEDIA_DIR}:/downloads
+    networks:
+      - home-network
+
+  # ---------------------------------------------------------------------------
+  # Homepage (Interface)
+  # ---------------------------------------------------------------------------      
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    restart: unless-stopped
+    ports:
+      - '3088:3088'
+    environment:
+      PORT: 3088
+      HOMEPAGE_ALLOWED_HOSTS: "*"
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+    volumes:
+      - ${DATA_DIR}/homepage/config:/app/config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - home-network

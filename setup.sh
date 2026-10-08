@@ -9,13 +9,23 @@ NC='\033[0m' # No Color
 echo -e "${GREEN}=== Iniciando Setup do Home Server ===${NC}"
 
 # 1. Atualizar pacotes do sistema
-echo -e "${YELLOW}[1/7] Atualizando pacotes do sistema...${NC}"
+echo -e "${YELLOW}[1/8] Atualizando pacotes do sistema...${NC}"
 sudo apt-get update -y && sudo apt-get upgrade -y
 sudo apt-get install -y curl wget git ca-certificates gnupg lsb-release build-essential
 
-# 2. Instalar Docker se não estiver instalado
+# 2. Instalar e habilitar o SSH
+echo -e "${YELLOW}[2/8] Configurando o servidor SSH...${NC}"
+sudo apt-get install -y openssh-server
+sudo systemctl enable ssh
+sudo systemctl start ssh
+if command -v ufw &> /dev/null; then
+    sudo ufw allow ssh || true
+fi
+echo -e "${GREEN}SSH configurado e ativado com sucesso!${NC}"
+
+# 3. Instalar Docker se não estiver instalado
 if ! command -v docker &> /dev/null; then
-    echo -e "${YELLOW}[2/7] Instalando Docker...${NC}"
+    echo -e "${YELLOW}[3/8] Instalando Docker...${NC}"
     curl -fsSL https://get.docker.com -o get-docker.sh
     sudo sh get-docker.sh
     rm get-docker.sh
@@ -26,18 +36,18 @@ else
     echo -e "${GREEN}Docker já está instalado.${NC}"
 fi
 
-# 3. Instalar Tailscale se não estiver instalado
+# 4. Instalar Tailscale se não estiver instalado
 if ! command -v tailscale &> /dev/null; then
-    echo -e "${YELLOW}[3/7] Instalando Tailscale...${NC}"
+    echo -e "${YELLOW}[4/8] Instalando Tailscale...${NC}"
     curl -fsSL https://tailscale.com/install.sh | sh
     echo -e "${GREEN}Tailscale instalado com sucesso!${NC}"
 else
     echo -e "${GREEN}Tailscale já está instalado.${NC}"
 fi
 
-# 4. Instalar NVM e Node.js (Versão LTS)
+# 5. Instalar NVM e Node.js (Versão LTS)
 if [ ! -d "$HOME/.nvm" ]; then
-    echo -e "${YELLOW}[4/7] Instalando NVM e Node.js LTS...${NC}"
+    echo -e "${YELLOW}[5/8] Instalando NVM e Node.js LTS...${NC}"
     export NVM_DIR="$HOME/.nvm"
     curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
     
@@ -52,8 +62,8 @@ else
     echo -e "${GREEN}NVM já está instalado em $HOME/.nvm.${NC}"
 fi
 
-# 5. Configurar arquivo .env e .env.example
-echo -e "${YELLOW}[5/7] Configurando variáveis de ambiente...${NC}"
+# 6. Configurar arquivo .env e .env.example
+echo -e "${YELLOW}[6/8] Configurando variáveis de ambiente...${NC}"
 
 # Cria o .env.example se não existir
 if [ ! -f .env.example ]; then
@@ -75,8 +85,8 @@ else
     echo -e "${GREEN}Arquivo .env já existe.${NC}"
 fi
 
-# 6. Criar estrutura de pastas dos serviços e ficheiros iniciais
-echo -e "${YELLOW}[6/7] Criando estrutura de dados locais...${NC}"
+# 7. Criar estrutura de pastas dos serviços e ficheiros iniciais
+echo -e "${YELLOW}[7/8] Criando estrutura de dados locais...${NC}"
 mkdir -p services/portainer/data
 mkdir -p services/vscode/config
 mkdir -p services/jellyfin/config services/jellyfin/cache
@@ -96,8 +106,8 @@ if [ ! -f services/filebrowser/config/settings.json ]; then
     touch services/filebrowser/config/settings.json
 fi
 
-# 7. Ativar Tailscale e Subir os Containers
-echo -e "${YELLOW}[7/7] Autenticando Tailscale e subindo os containers...${NC}"
+# 8. Ativar Tailscale e Subir os Containers
+echo -e "${YELLOW}[8/8] Autenticando Tailscale e subindo os containers...${NC}"
 sudo tailscale up --accept-routes
 
 echo -e "${GREEN}Subindo containers via Docker Compose...${NC}"

@@ -131,10 +131,11 @@ create_or_update_proxy_host() {
 
 echo "🚀 Configurando Proxy Hosts no NPM..."
 
-# 🏠 NAKED DOMAIN (bluedress.duckdns.org) -> Apontando para o Uptime Kuma (ou escolha outro serviço)
-create_or_update_proxy_host "" "uptime-kuma" 3001 true
+# 🏠 NAKED DOMAIN (bluedress.duckdns.org)
+create_or_update_proxy_host "" "homepage" 80 true
 
 # 🌐 SUBDOMÍNIOS
+create_or_update_proxy_host "homepage" "homepage" 3088 true
 create_or_update_proxy_host "portainer" "portainer" 9000 true
 create_or_update_proxy_host "files" "filebrowser" 8080 false
 create_or_update_proxy_host "code" "vscode" 8443 true
