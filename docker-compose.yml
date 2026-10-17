@@ -56,7 +56,7 @@ services:
       DEFAULT_WORKSPACE: /config/workspace
     volumes:
       - ${DATA_DIR}/vscode/config:/config
-      - ${DATA_DIR}/src:/src
+      - ~/src:/src
     networks:
       - home-network
 
@@ -86,19 +86,22 @@ services:
     image: registry.gitlab.com/crafty-controller/crafty-4:latest
     container_name: crafty
     restart: unless-stopped
-    ports:
-      - '8443:8443'         # Mantido 8443 no host
-      - '8123:8123'         # Porta de API/HTTP
-      - '25565-25575:25565-25575/tcp' # Range Java
-      - '19132-19135:19132-19135/udp' # Range Bedrock
-      - '8124:8124/tcp'     # Dynmap / BlueMap
+    #ports:
+    #  - '8443:8443'         # Painel Web
+    #  - '8123:8123'         # API
+    #  - '25565:25565/tcp'   # Servidor Java Principal (Garante o vínculo direto)
+    #  - '25566-25575:25566-25575/tcp' # Outros servidores Java
+    #  - '19132:19132/udp'   # Servidor Bedrock Principal
+    #  - '19133-19135:19133-19135/udp' # Outros servidores Bedrock
+    #  - '8124:8124/tcp'     # Mapas - Dynmap / BlueMap
+    network_mode: host
     environment:
       TZ: ${TZ}
     volumes:
       - ${DATA_DIR}/crafty/data:/crafty/crafty-web/app/config
-      - ${DATA_DIR}/crafty/servers:/crafty/crafty-web/app/game_servers
-    networks:
-      - home-network
+      - ${DATA_DIR}/crafty/servers:/crafty/servers
+    #networks:
+    #  - home-network
 
   # ---------------------------------------------------------------------------
   # Filebrowser (Gestor de Arquivos Web)
