@@ -145,4 +145,8 @@ create_or_update_proxy_host "syncthing" "syncthing" 8384 false
 create_or_update_proxy_host "status" "uptime-kuma" 3001 true
 create_or_update_proxy_host "torrent" "qbittorrent" 8085 false
 
+# 🤖 DeepSeek Harness
+create_or_update_proxy_host "ai" "deepseek" 3080 true
+create_or_update_proxy_host "deepseek" "deepseek" 3080 true
+
 echo "✅ Configuração concluída com sucesso!"
