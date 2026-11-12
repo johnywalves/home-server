@@ -4,3 +4,5 @@
 # Ignorar todos os dados de persistência dos serviços
 services/*/**
 !services/**/.gitkeep
+# Backups locais da troca de senha
+.backup-admin-pw-*/

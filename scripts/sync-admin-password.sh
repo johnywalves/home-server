@@ -181,11 +181,16 @@ sync_vscode() {
 sync_syncthing() {
     is_running "$C_SYNCTHING" || { warn "syncthing: container parado"; return 2; }
     docker exec -e ADMIN_PASSWORD -e ADMIN_USER "$C_SYNCTHING" sh -c '
-        set -e
         st() { syncthing cli --home /config "$@"; }
-        [ -n "$(st config gui user get)" ] || st config gui user set "$ADMIN_USER"
-        st config gui password set "$ADMIN_PASSWORD"
-        echo "syncthing admin: $(st config gui user get)"'
+        cur=$(st config gui user get) || exit 1
+        [ -n "$cur" ] || st config gui user set "$ADMIN_USER" || exit 1
+        st config gui password set "$ADMIN_PASSWORD" || exit 1
+        # a GUI reinicia após a troca; confirma o usuário com algumas tentativas
+        for i in 1 2 3 4 5 6 7 8 9 10; do
+            u=$(st config gui user get 2>/dev/null) && [ -n "$u" ] && { echo "syncthing admin: $u"; exit 0; }
+            sleep 2
+        done
+        exit 1'
 }
 
 # ---------------------------------------------------------------- qBittorrent
@@ -277,9 +282,20 @@ JS
         CREATED) echo "uptime-kuma admin criado: $ADMIN_USER" ;;
         EXISTS)
             # lê a senha do ambiente do container para não aparecer no argv do host
-            res=$(docker exec -e ADMIN_PASSWORD "$C_KUMA" sh -c \
-                'node extra/reset-password.js --new-password="$ADMIN_PASSWORD"' 2>&1)
-            grep -q "Password reset successfully" <<<"$res" || { err "uptime-kuma: reset falhou"; return 1; }
+            # O reset grava a senha e depois pode travar ao desconectar clientes
+            # via socket; por isso há timeout e a confirmação é o login com a senha nova.
+            docker exec -e ADMIN_PASSWORD "$C_KUMA" sh -c \
+                'timeout 30 node extra/reset-password.js --new-password="$ADMIN_PASSWORD"' >/dev/null 2>&1
+            docker exec -e ADMIN_PASSWORD -e ADMIN_USER "$C_KUMA" sh -c 'pkill -f reset-password.js' >/dev/null 2>&1
+            res=$(docker exec -i -e ADMIN_PASSWORD -e ADMIN_USER "$C_KUMA" timeout 30 node - <<'JS'
+const { io } = require('/app/node_modules/socket.io-client');
+const s = io('http://127.0.0.1:3001', { reconnection: false, timeout: 5000 });
+s.on('connect_error', () => { console.log('UNREACHABLE'); process.exit(1); });
+s.on('connect', () => s.emit('login', { username: process.env.ADMIN_USER, password: process.env.ADMIN_PASSWORD, token: '' },
+  (r) => { console.log(r && r.ok ? 'LOGIN_OK' : 'LOGIN_FAIL'); process.exit(0); }));
+JS
+            )
+            [ "$res" = "LOGIN_OK" ] || { err "uptime-kuma: reset falhou ($res)"; return 1; }
             echo "uptime-kuma admin atualizado" ;;
         *) err "uptime-kuma: $res"; return 1 ;;
     esac
