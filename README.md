@@ -92,10 +92,21 @@ O repositório inclui um `Makefile` para facilitar o dia a dia:
 
 ## 🔐 Primeiros Passos Pós-Instalação
 
+### Senha única de administrador
+
+Defina `ADMIN_USER` / `ADMIN_PASSWORD` (mín. 12 caracteres) no `.env`. O `docker-compose.yml` aplica a senha ao **NPM** (`INITIAL_ADMIN_*`, só na 1ª subida) e ao **code-server** (`PASSWORD`). O script `scripts/sync-admin-password.sh` (chamado pelo `make setup`) cobre o resto, criando o admin em instalação nova ou trocando a senha nos existentes:
+
+```bash
+./scripts/sync-admin-password.sh             # todos
+./scripts/sync-admin-password.sh portainer   # só um
+```
+
+Serviços: `npm portainer filebrowser vscode syncthing qbittorrent jellyfin kuma crafty`. Filebrowser, qBittorrent e Jellyfin são parados por alguns segundos enquanto o banco/config é alterado; Portainer também (helper oficial de reset). Após trocar o `.env`, rode `make reload` (recria NPM/code-server) e o script. Os usuários não-admin não são alterados.
+
 1. **Tailscale:** Após o setup, aceda à URL mostrada no terminal para autenticar a máquina na sua conta Tailscale.
-2. **Nginx Proxy Manager:** Aceda a `http://<IP-DO-SERVIDOR>:81` (Credenciais padrão: `admin@example.com` / `changeme`).
-3. **Portainer:** Aceda a `http://<IP-DO-SERVIDOR>:9000` e crie a conta do utilizador administrador.
-4. **Filebrowser:** Aceda a `http://<IP-DO-SERVIDOR>:8080` (Credenciais padrão: `admin` / `admin`).
+2. **Nginx Proxy Manager:** Aceda a `http://<IP-DO-SERVIDOR>:81` (login: `NPM_ADMIN_EMAIL` / `ADMIN_PASSWORD`).
+3. **Portainer:** Aceda a `http://<IP-DO-SERVIDOR>:9000` (login: `ADMIN_USER` / `ADMIN_PASSWORD`).
+4. **Filebrowser:** Aceda a `http://<IP-DO-SERVIDOR>:8080` (login: `ADMIN_USER` / `ADMIN_PASSWORD`).
 5. **Syncthing:** Aceda a `http://<IP-DO-SERVIDOR>:8384` para definir o acesso e adicionar dispositivos parceiros.
 
 > ⚠️ Aviso de Segurança: O Filebrowser e o Syncthing estão configurados para aceder à raiz (`/`) e ao diretório `/data/host` do servidor. Certifique-se de configurar palavras-passe fortes nas respetivas interfaces de administração.

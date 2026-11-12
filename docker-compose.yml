@@ -16,6 +16,9 @@ services:
       - '443:443'
     environment:
       TZ: ${TZ}
+      # Cria o admin na 1ª subida (ignorado se o DB já tem usuário). Instalações existentes: scripts/sync-admin-password.sh
+      INITIAL_ADMIN_EMAIL: ${NPM_ADMIN_EMAIL:?defina NPM_ADMIN_EMAIL no .env}
+      INITIAL_ADMIN_PASSWORD: ${ADMIN_PASSWORD:?defina ADMIN_PASSWORD no .env}
     volumes:
       - ${DATA_DIR}/nginx-proxy-manager/data:/data
       - ${DATA_DIR}/nginx-proxy-manager/letsencrypt:/etc/letsencrypt
@@ -54,6 +57,7 @@ services:
       PGID: ${PGID}
       TZ: ${TZ}
       DEFAULT_WORKSPACE: /config/workspace
+      PASSWORD: ${ADMIN_PASSWORD:?defina ADMIN_PASSWORD no .env}
     volumes:
       - ${DATA_DIR}/vscode/config:/config
       - ~/src:/src

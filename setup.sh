@@ -113,6 +113,9 @@ sudo tailscale up --accept-routes
 echo -e "${GREEN}Subindo containers via Docker Compose...${NC}"
 sudo docker compose up -d
 
+echo "🔑 Aplicando ADMIN_PASSWORD aos serviços..."
+./scripts/sync-admin-password.sh || echo "⚠️ Alguns serviços não sincronizaram a senha; rode ./scripts/sync-admin-password.sh depois."
+
 echo "⚙️ A configurar mapeamentos no Nginx Proxy Manager..."
 ./scripts/configure-npm.sh
 

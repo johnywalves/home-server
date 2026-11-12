@@ -13,7 +13,7 @@ fi
 
 NPM_API="http://localhost:81/api"
 NPM_ADMIN_USER="${NPM_ADMIN_EMAIL:-admin@example.com}"
-NPM_ADMIN_PASS="${NPM_ADMIN_PASSWORD:-changeme}"
+NPM_ADMIN_PASS="${ADMIN_PASSWORD:-${NPM_ADMIN_PASSWORD:-changeme}}"
 
 echo "⏳ Aguardando Nginx Proxy Manager ficar online..."
 until curl -s "$NPM_API/" > /dev/null; do
