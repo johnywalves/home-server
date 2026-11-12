@@ -98,8 +98,11 @@ services:
     environment:
       TZ: ${TZ}
     volumes:
-      - ${DATA_DIR}/crafty/data:/crafty/crafty-web/app/config
+      - ${DATA_DIR}/crafty/data:/crafty/app/config   # DB (usuarios/servidores), config.json
       - ${DATA_DIR}/crafty/servers:/crafty/servers
+      - ${DATA_DIR}/crafty/backups:/crafty/backups
+      - ${DATA_DIR}/crafty/logs:/crafty/logs
+      - ${DATA_DIR}/crafty/import:/crafty/import
     #networks:
     #  - home-network
 
@@ -113,6 +116,8 @@ services:
     ports:
       - '8080:8080'
     user: "${PUID}:${PGID}"
+    environment:
+      FB_PORT: 8080  # healthcheck da imagem lê a porta do env (settings.json diz 80)
     command: --database /database/filebrowser.db --port 8080
     volumes:
       - ${DATA_DIR}/:/srv
@@ -191,9 +196,9 @@ services:
     environment:
       PORT: 3088
       HOMEPAGE_ALLOWED_HOSTS: "*"
-      PUID: ${PUID}
-      PGID: ${PGID}
       TZ: ${TZ}
+    # Sem PUID/PGID: o entrypoint descarta grupos suplementares. Usa o GID do grupo docker do host.
+    user: "${PUID}:984"
     volumes:
       - ${DATA_DIR}/homepage/config:/app/config
       - /var/run/docker.sock:/var/run/docker.sock:ro

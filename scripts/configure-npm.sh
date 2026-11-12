@@ -140,7 +140,9 @@ create_or_update_proxy_host "portainer" "portainer" 9000 true
 create_or_update_proxy_host "files" "filebrowser" 8080 false
 create_or_update_proxy_host "code" "vscode" 8443 true
 create_or_update_proxy_host "jellyfin" "jellyfin" 8096 false
-create_or_update_proxy_host "crafty" "crafty" 8443 true "https"
+# crafty usa network_mode: host (fora da rede do compose): o NPM alcança pelo gateway da rede home-network
+CRAFTY_HOST=$(docker network inspect home-server_home-network -f '{{range .IPAM.Config}}{{.Gateway}}{{end}}' 2>/dev/null || true)
+create_or_update_proxy_host "crafty" "${CRAFTY_HOST:-172.18.0.1}" 8443 true "https"
 create_or_update_proxy_host "syncthing" "syncthing" 8384 false
 create_or_update_proxy_host "status" "uptime-kuma" 3001 true
 create_or_update_proxy_host "torrent" "qbittorrent" 8085 false
